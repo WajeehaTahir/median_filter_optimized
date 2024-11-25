@@ -1,4 +1,7 @@
 #include "median_filter.h"
+#include <iostream>
+
+using namespace std;
 
 dtype* sort_ascending(dtype * a, int n)
 {
@@ -20,7 +23,20 @@ dtype* sort_ascending(dtype * a, int n)
 
 dtype median(dtype* window, int n)
 {
-    return sort_ascending(window, n)[n/2];
+    dtype *sorted_array = sort_ascending(window, n);
+
+    /*for (int i = 0; i < n; i++)
+    {
+        cout << sorted_array[i] << " ";
+    }
+
+    cout << endl;*/
+
+    dtype median = sorted_array[(n/2)];
+    //cout << "Median: " << median << endl;
+
+    return median;
+    //return sort_ascending(window, n)[n/2];
 }
 
 void median_filter(dtype *image_in, dtype *image_out)
@@ -36,11 +52,11 @@ void median_filter(dtype *image_in, dtype *image_out)
         for (int j = 0; j < N; j++)
         {
             int count = 0;
-            for (int k = -F/2; k < F/2; k++)
+            for (int k = -F/2; k <= F/2; k++)
             {
-                for (int l = -F/2; l < F/2; l++)
+                for (int l = -F/2; l <= F/2; l++)
                 {
-                    if ((i+k) < 0 || (j+k) < 0 || (i+k) > M || (j+k) > N)
+                    if ((i+k) < 0 || (j+l) < 0 || (i+k) >= M || (j+l) >= N) // and here
                     {
                         window[count] = 0;
                     }
@@ -52,6 +68,7 @@ void median_filter(dtype *image_in, dtype *image_out)
                 }
             }
 
+            
             filtered_image[i][j] = median(window, F*F);
         }
     }
