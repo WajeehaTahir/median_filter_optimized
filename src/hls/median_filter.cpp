@@ -21,60 +21,67 @@ dtype* sort_ascending(dtype * a, int n)
     return a;
 }
 
-dtype median(dtype* window, int n)
+dtype median(dtype window[F][F], int n)
 {
-    dtype *sorted_array = sort_ascending(window, n);
+    dtype window_array[F*F];
 
-    /*for (int i = 0; i < n; i++)
+    cout << "window: " << endl;
+
+    int count = 0;
+    for (int i = 0; i < F; i++)
     {
-        cout << sorted_array[i] << " ";
+        for (int j = 0; j < F; j++)
+        {
+            cout << window[i][j] << " ";
+            window_array[count] = window[i][j];
+            count++;
+
+        }
+        cout << endl;
     }
 
-    cout << endl;*/
-
-    dtype median = sorted_array[(n/2)];
-    //cout << "Median: " << median << endl;
-
-    return median;
-    //return sort_ascending(window, n)[n/2];
+    return sort_ascending(window_array, n)[n/2];
 }
 
-void median_filter(dtype *image_in, dtype *image_out)
+void median_filter(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out)
 {
-    dtype image[M][N], window[F*F], filtered_image[M][N];
+    dtype window[F][F];
+    dtype buffer[2][N];
+    dtype temp, temp_col[3];
 
-	load_image: for (int i = 0; i < M * N; i++) {
-		image[i / N][i % N] = image_in[i];
-	}
-
-    for (int i = 0; i < M; i++)
+    for (int y = 0; y < M; y++)
     {
-        for (int j = 0; j < N; j++)
+        for (int x = 0; x < N; x++)
         {
-            int count = 0;
-            for (int k = -F/2; k <= F/2; k++)
-            {
-                for (int l = -F/2; l <= F/2; l++)
-                {
-                    if ((i+k) < 0 || (j+l) < 0 || (i+k) >= M || (j+l) >= N) // and here
-                    {
-                        window[count] = 0;
-                    }
-                    else {
-                        window[count] = image[i+k][j+l];
-                    }
-                    
-                    count++;
-                }
-            }
+            image_in.read(temp);
 
-            
-            filtered_image[i][j] = median(window, F*F);
+            temp_col[0] = buffer[0][x];
+            temp_col[1] = buffer[1][x];
+
+            window[0][0] = window[0][1];
+            window[0][1] = window[0][2];
+            window[0][2] = temp_col[0];
+
+            window[1][0] = window[1][1];
+            window[1][1] = window[1][2];
+
+            window[1][2] = temp_col[1];
+            buffer[0][x] = temp_col[1];
+
+            window[2][0] = window[2][1];
+            window[2][1] = window[2][2];
+
+            window[2][2] = temp;
+            buffer[1][x] = temp;
+
+            if (x > 1 && y > 1)  
+            {
+                dtype median_value = median(window, F*F);
+
+                cout << "median: " << median_value << endl;
+                image_out.write(median_value);
+            }
         }
     }
-
-    save_output: for (int i = 0; i < M * N; i++) {
-		image_out[i] = filtered_image[i / N][i % N];
-	}
-
 }
+
