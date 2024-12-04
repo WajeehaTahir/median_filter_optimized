@@ -108,3 +108,33 @@ int main()
     median_filter(image_in_stream, image_out_stream);
 
 }
+
+/*
+
+void median_filter_sw(dtype image[M][N], dtype *image_out)
+{
+    const int new_M = M - F + 1;
+    const int new_N = N - F + 1;
+    dtype window[F * F];
+
+    // Iterate over the valid region where the filter window fits entirely.
+    for (int i = 0; i < new_M; i++)
+    {
+        for (int j = 0; j < new_N; j++)
+        {
+            int count = 0;
+            for (int k = 0; k < F; k++)
+            {
+                for (int l = 0; l < F; l++)
+                {
+                    // Populate the window with valid values from the image.
+                    window[count++] = image[i + k][j + l];
+                }
+            }
+
+            // Compute the median and store the result.
+            image_out[i * new_N + j] = median_sw(window, F * F);
+        }
+    }
+}
+*/
