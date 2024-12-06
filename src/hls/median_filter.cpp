@@ -5,8 +5,10 @@ using namespace std;
 
 dtype* sort_ascending(dtype * a, int n)
 {
+    sort_loop_1:
     for(int i=0; i<n; i++)
     {
+        sort_loop_2:
         for(int j=i+1; j<n; j++) 
         { 
             if(a[i]>a[j])
@@ -25,19 +27,21 @@ dtype median(dtype window[F][F], int n)
 {
     dtype window_array[F*F];
 
-    cout << "window: " << endl;
+    // cout << "window: " << endl;
 
     int count = 0;
+    median_loop_1:
     for (int i = 0; i < F; i++)
     {
+        median_loop_2:
         for (int j = 0; j < F; j++)
         {
-            cout << window[i][j] << " ";
+            // cout << window[i][j] << " ";
             window_array[count] = window[i][j];
             count++;
 
         }
-        cout << endl;
+        // cout << endl;
     }
 
     return sort_ascending(window_array, n)[n/2];
@@ -45,14 +49,20 @@ dtype median(dtype window[F][F], int n)
 
 void median_filter(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out)
 {
+#pragma HLS INTERFACE mode=s_axilite port=return
+#pragma HLS STREAM variable=image_out
+#pragma HLS STREAM variable=image_in
     dtype window[F][F];
     dtype buffer[2][N];
     dtype temp, temp_col[3];
 
+    filter_loop_1:
     for (int y = 0; y < M; y++)
     {
+        filter_loop_2:
         for (int x = 0; x < N; x++)
         {
+#pragma HLS PIPELINE
             image_in.read(temp);
 
             temp_col[0] = buffer[0][x];
@@ -78,10 +88,9 @@ void median_filter(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out
             {
                 dtype median_value = median(window, F*F);
 
-                cout << "median: " << median_value << endl;
+                // cout << "median: " << median_value << endl;
                 image_out.write(median_value);
             }
         }
     }
 }
-
