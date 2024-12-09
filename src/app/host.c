@@ -61,13 +61,13 @@ int main()
     {
         bytes_left = buff_size;
         //buff=(char *)buff_int;
-        while (bytes_left > 0)
-        {
+        //while (bytes_left > 0)
+        //{
             n=send(s, buff, bytes_left, 0);
             bytes_left -= n;
             //buff+= n;
             printf("Sent bytes: %d, remaining bytes: %d\n",n,bytes_left);
-        }
+        //}
     }
     //start receive
     for (curr_tr = 0; curr_tr < max_transfers; curr_tr++)
@@ -80,17 +80,17 @@ int main()
             n=recv(s,recv_buff,bytes_left, 0);
             bytes_left -= n;
             recv_buff+= n;
-            //printf("Received bytes: %d, remaining bytes: %d\n",n,bytes_left);
+            printf("Received bytes: %d, remaining bytes: %d\n",n,bytes_left);
         }
     }
-    /*   for(i=0; i<array_size; i++)
+      for(i=0; i<3*6; i++)
        {
            //if (i == 0 || i==array_size-1)
            {
-               printf("buff[%d] %d, recv_buff[%d] %d\n",i,buff_int[i],i,recv_buff_int[i]);
+               /*printf("buff[%d] %d, recv_buff[%d] %d\n",i,buff_int[i],i,recv_buff_int[i]);*/
+               printf("%d \n", recv_buff_int[i]);
            }
-       }*/
+       }
     return 0;
 }
-
 
