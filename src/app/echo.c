@@ -174,7 +174,7 @@ void process_echo_request(void *p)
 	//	int RECV_BUF_SIZE = 2048;
 	//	int RECV_BUF_SIZE = 64 * 1024 * 1024;
 	//	int RECV_BUF_SIZE = 128 * 1024 * 1024;
-		int RECV_BUF_SIZE = M*N*sizeof(dtype);
+		int RECV_BUF_SIZE = M*N*8;//sizeof(dtype);
 	//	int max_transfers = 1;
 
 		int max_transfers = 16;
@@ -189,7 +189,7 @@ void process_echo_request(void *p)
 		while (1) {
 			//start receiving data
 			//for (curr_tr = 0; curr_tr < max_transfers; curr_tr++) {
-				xil_printf("Iteration: %d receiving\r\n", curr_tr);
+				//xil_printf("Iteration: %d receiving\r\n", curr_tr);
 				bytes_left = RECV_BUF_SIZE;
 				buff = (char *) recv_buf_int;
 				status = 0;
@@ -252,7 +252,7 @@ void process_echo_request(void *p)
 
 			//star sending back
 			//for (curr_tr = 0; curr_tr < max_transfers; curr_tr++) {
-				xil_printf("Iteration: %d sending\r\n", curr_tr);
+				//xil_printf("Iteration: %d sending\r\n", curr_tr);
 				bytes_left = RECV_BUF_SIZE;
 				buff = (char *) image_out_hw;
 				status = 0;
