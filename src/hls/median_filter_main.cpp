@@ -27,8 +27,14 @@ dtype median_sw(dtype* window, int n)
 }
 
 
-void median_filter_sw(dtype image[M][N], dtype *image_out)
+void median_filter_sw(dtype image_in[M*N], dtype *image_out)
 {
+    dtype image[M][N];
+
+    load_image: for (int i = 0; i < M * N; i++) {
+		image[i / N][i % N] = image_in[i];
+	}
+
     const int new_M = M - F + 1;
     const int new_N = N - F + 1;
     dtype window[F * F];
@@ -53,14 +59,20 @@ void median_filter_sw(dtype image[M][N], dtype *image_out)
 
 int main() 
 {
-    dtype image_in[M][N] = {
+    /*dtype image_in_1[M][N] = {
         {1, 2, 3, 4, 5, 6, 7, 8}, 
         {9, 10, 11, 12, 13, 14, 15, 16}, 
         {17, 18, 19, 20, 21, 22, 23, 24}, 
         {25, 26, 27, 28, 29, 30, 31, 32},
         {33, 34, 35, 36, 37, 38, 39, 40}
-    }; 
-    
+    }; */
+    dtype image_in[M*N] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 
+        9, 10, 11, 12, 13, 14, 15, 16, 
+        17, 18, 19, 20, 21, 22, 23, 24, 
+        25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40
+    };
     // dtype image_in[M*N] = {0, 2, 1 ,1 ,1 , 2, 3 ,3, 0, 1, 0, 1, 1, 2, 1, 4};
 
     /*dtype image_in[M*N] = 
@@ -73,35 +85,23 @@ int main()
         1, 1, 4, 2, 3, 0
     };*/
 
-    dtype image_out[M*N];
+    dtype image_out_sw[(M - F + 1) * (N - F + 1)], image_out_hw[(M - F + 1) * (N - F + 1)];
 
-    median_filter_sw(image_in, image_out);
+    median_filter_sw(image_in, image_out_sw);
 
-    hls::stream <dtype> image_in_stream;
-    hls::stream <dtype> image_out_stream;
-
-    for (int i = 0; i < M; i++)
-    {
-        for (int j = 0; j < N; j++)
-        {
-            image_in_stream.write(image_in[i][j]);
-        }  
-    }
-
-    median_filter(image_in_stream, image_out_stream);
+    median_filter(image_in, image_out_hw);
 
     dtype temp;
     int count = 0;
 
-    while (!image_out_stream.empty())
+    for(int i = 0; i <(M-F+1)*(N-F+1); i++)
     {
-        temp = image_out_stream.read();
-
-        if (temp != image_out[count])
+        if (image_out_sw[i] != image_out_hw[i])
         {
             cout << "hw and sw implementations do not match" << endl;
         }
-        count++;
+
+        cout << image_out_sw[i] << " " << image_out_hw[i] << endl;
     }
 
     cout << "hw and sw implementations match" << endl;

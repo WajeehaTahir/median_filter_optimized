@@ -47,11 +47,32 @@ dtype median(dtype window[F][F], int n)
     return sort_ascending(window_array, n)[n/2];
 }
 
-void median_filter(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out)
+void load(dtype *image_in, hls::stream <dtype> &image_in_stream)
 {
-#pragma HLS INTERFACE mode=s_axilite port=return
-#pragma HLS STREAM variable=image_out
-#pragma HLS STREAM variable=image_in
+    load_loop:
+    for (int i = 0; i < M*N; i++)
+    {
+        image_in_stream.write(image_in[i]);
+    }  
+}
+
+void save(hls::stream <dtype> &image_out_stream, dtype *image_out)
+{
+    int count = 0;
+    save_loop:
+    /*while (!image_out_stream.empty())
+    {
+        image_out[count] = image_out_stream.read();   
+        count++;     
+    }*/
+    for (int i = 0; i < (M-F+1)*(N-F+1); i++)
+    {
+        image_out[i] = image_out_stream.read();
+    }  
+}
+
+void median_filter_i(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out)
+{
     dtype window[F][F];
     dtype buffer[2][N];
     dtype temp, temp_col[3];
@@ -93,4 +114,19 @@ void median_filter(hls::stream <dtype> &image_in, hls::stream <dtype> &image_out
             }
         }
     }
+}
+
+void median_filter(dtype *image_in, dtype *image_out)
+{
+#pragma HLS DATAFLOW
+#pragma HLS INTERFACE mode=m_axi port=image_in depth=M*N
+#pragma HLS INTERFACE mode=m_axi port=image_out depth=(M-F+1)*(N-F+1)
+#pragma HLS INTERFACE mode=s_axilite port=return
+hls::stream <dtype> image_in_stream;
+hls::stream <dtype> image_out_stream;
+load(image_in, image_in_stream);
+
+median_filter_i(image_in_stream, image_out_stream);
+
+save(image_out_stream, image_out);
 }
