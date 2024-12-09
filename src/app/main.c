@@ -1,130 +1,273 @@
+/*
+ * Copyright (C) 2016 - 2019 Xilinx, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+ * SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ *
+ */
+
 #include <stdio.h>
 #include "xparameters.h"
+#include "netif/xadapter.h"
+#include "platform_config.h"
 #include "xil_printf.h"
-#include "xmedian_filter.h"
-#include <xil_cache.h>
 
-typedef int dtype;
+#if LWIP_IPV6==1
+#include "lwip/ip.h"
+#else
+#if LWIP_DHCP==1
+#include "lwip/dhcp.h"
+#endif
+#endif
 
-#define M (5)
-#define N (8)
-#define F (3)
+#ifdef XPS_BOARD_ZCU102
+#ifdef XPAR_XIICPS_0_DEVICE_ID
+int IicPhyReset(void);
+#endif
+#endif
 
-void median_filter_fpga(dtype *image_in, dtype *image_out)
+int main_thread();
+void print_echo_app_header();
+void echo_application_thread(void *);
+
+void lwip_init();
+
+#if LWIP_IPV6==0
+#if LWIP_DHCP==1
+extern volatile int dhcp_timoutcntr;
+err_t dhcp_start(struct netif *netif);
+#endif
+#endif
+
+#define THREAD_STACKSIZE 1024
+
+static struct netif server_netif;
+struct netif *echo_netif;
+
+#if LWIP_IPV6==1
+void print_ip6(char *msg, ip_addr_t *ip)
 {
-	XMedian_filter hw;
-	XMedian_filter_Initialize(&hw, XPAR_MEDIAN_FILTER_0_S_AXI_CONTROL_BASEADDR);
-	XMedian_filter_Set_image_in(&hw, (u64) image_in);
-	XMedian_filter_Set_image_out(&hw, (u64) image_out);
-
-	Xil_DCacheFlushRange(image_in, M*N*sizeof(dtype));
-	Xil_DCacheInvalidateRange(image_out, (M-F+1)*(N-F+1)*sizeof(dtype));
-
-	XMedian_filter_Start(&hw);
-
-    while(!XMedian_filter_IsDone(&hw));
+	print(msg);
+	xil_printf(" %x:%x:%x:%x:%x:%x:%x:%x\n\r",
+			IP6_ADDR_BLOCK1(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK2(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK3(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK4(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK5(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK6(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK7(&ip->u_addr.ip6),
+			IP6_ADDR_BLOCK8(&ip->u_addr.ip6));
 }
 
-dtype* sort_ascending_sw(dtype * a, int n)
+#else
+void
+print_ip(char *msg, ip_addr_t *ip)
 {
-    for(int i=0; i<n; i++)
-    {
-        for(int j=i+1; j<n; j++)
-        {
-            if(a[i]>a[j])
-            {
-                int temp = a[i];
-                a[i] = a[j];
-                a[j] = temp;
-            }
-        }
-    }
-
-    return a;
+	xil_printf(msg);
+	xil_printf("%d.%d.%d.%d\n\r", ip4_addr1(ip), ip4_addr2(ip),
+			ip4_addr3(ip), ip4_addr4(ip));
 }
 
-dtype median_sw(dtype* window, int n)
+void
+print_ip_settings(ip_addr_t *ip, ip_addr_t *mask, ip_addr_t *gw)
 {
-    return sort_ascending_sw(window, n)[n/2];
+
+	print_ip("Board IP: ", ip);
+	print_ip("Netmask : ", mask);
+	print_ip("Gateway : ", gw);
 }
 
-void median_filter_sw(dtype image_in[M*N], dtype *image_out)
-{
-    dtype image[M][N];
-
-    load_image: for (int i = 0; i < M * N; i++) {
-		image[i / N][i % N] = image_in[i];
-	}
-
-    const int new_M = M - F + 1;
-    const int new_N = N - F + 1;
-    dtype window[F * F];
-
-    for (int i = 0; i < new_M; i++)
-    {
-        for (int j = 0; j < new_N; j++)
-        {
-            int count = 0;
-            for (int k = 0; k < F; k++)
-            {
-                for (int l = 0; l < F; l++)
-                {
-                    window[count++] = image[i + k][j + l];
-                }
-            }
-
-            image_out[i * new_N + j] = median_sw(window, F * F);
-        }
-    }
-}
-
+#endif
 int main()
 {
-    /*dtype image_in_1[M][N] = {
-        {1, 2, 3, 4, 5, 6, 7, 8},
-        {9, 10, 11, 12, 13, 14, 15, 16},
-        {17, 18, 19, 20, 21, 22, 23, 24},
-        {25, 26, 27, 28, 29, 30, 31, 32},
-        {33, 34, 35, 36, 37, 38, 39, 40}
-    }; */
-    dtype image_in[M*N] = {
-        1, 2, 3, 4, 5, 6, 7, 8,
-        9, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31, 32,
-        33, 34, 35, 36, 37, 38, 39, 40
-    };
-    // dtype image_in[M*N] = {0, 2, 1 ,1 ,1 , 2, 3 ,3, 0, 1, 0, 1, 1, 2, 1, 4};
+	sys_thread_new("main_thrd", (void(*)(void*))main_thread, 0,
+	                THREAD_STACKSIZE,
+	                DEFAULT_THREAD_PRIO);
+	vTaskStartScheduler();
+	while(1);
+	return 0;
+}
 
-    /*dtype image_in[M*N] =
-    {
-        1, 4, 0, 1, 3, 1,
-        2, 2, 4, 2, 2, 3,
-        1, 0, 1, 0, 1, 0,
-        1, 2, 1, 0, 2, 2,
-        2, 5, 3, 1, 2, 5,
-        1, 1, 4, 2, 3, 0
-    };*/
+void network_thread(void *p)
+{
+    struct netif *netif;
+    /* the mac address of the board. this should be unique per board */
+    unsigned char mac_ethernet_address[] = { 0x00, 0x0a, 0x35, 0x00, 0x01, 0x05 };
+#if LWIP_IPV6==0
+    ip_addr_t ipaddr, netmask, gw;
+#if LWIP_DHCP==1
+    int mscnt = 0;
+#endif
+#endif
 
-    dtype image_out_sw[(M - F + 1) * (N - F + 1)], image_out_hw[(M - F + 1) * (N - F + 1)];
+    netif = &server_netif;
 
-    median_filter_sw(image_in, image_out_sw);
+    xil_printf("\r\n\r\n");
+    xil_printf("-----lwIP Socket Mode Echo server Demo Application ------\r\n");
 
-    median_filter_fpga(image_in, image_out_hw);
+#if LWIP_IPV6==0
+#if LWIP_DHCP==0
+    /* initialize IP addresses to be used */
+    IP4_ADDR(&ipaddr,  192, 168, 1, 10);
+    IP4_ADDR(&netmask, 255, 255, 255,  0);
+    IP4_ADDR(&gw,      192, 168, 1, 1);
+#endif
 
-    int flag = 1;
+    /* print out IP settings of the board */
 
-    for(int i = 0; i <(M-F+1)*(N-F+1); i++)
-    {
-        if (image_out_sw[i] != image_out_hw[i])
-        {
-        	xil_printf("hw and sw implementations do not match \r\n");
-        	flag = 0;
-        }
+#if LWIP_DHCP==0
+    print_ip_settings(&ipaddr, &netmask, &gw);
+    /* print all application headers */
+#endif
 
-        xil_printf("%d %d \r\n", image_out_sw[i], image_out_hw[i]);
+#if LWIP_DHCP==1
+	ipaddr.addr = 0;
+	gw.addr = 0;
+	netmask.addr = 0;
+#endif
+#endif
+
+#if LWIP_IPV6==0
+    /* Add network interface to the netif_list, and set it as default */
+    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_ethernet_address, PLATFORM_EMAC_BASEADDR)) {
+	xil_printf("Error adding N/W interface\r\n");
+	return;
+    }
+#else
+    /* Add network interface to the netif_list, and set it as default */
+    if (!xemac_add(netif, NULL, NULL, NULL, mac_ethernet_address, PLATFORM_EMAC_BASEADDR)) {
+	xil_printf("Error adding N/W interface\r\n");
+	return;
     }
 
-    if(flag) xil_printf("hw and sw implementations match");
+    netif->ip6_autoconfig_enabled = 1;
 
+    netif_create_ip6_linklocal_address(netif, 1);
+    netif_ip6_addr_set_state(netif, 0, IP6_ADDR_VALID);
+
+    print_ip6("\n\rBoard IPv6 address ", &netif->ip6_addr[0].u_addr.ip6);
+#endif
+
+    netif_set_default(netif);
+
+    /* specify that the network if is up */
+    netif_set_up(netif);
+
+    /* start packet receive thread - required for lwIP operation */
+    sys_thread_new("xemacif_input_thread", (void(*)(void*))xemacif_input_thread, netif,
+            THREAD_STACKSIZE,
+            DEFAULT_THREAD_PRIO);
+
+#if LWIP_IPV6==0
+#if LWIP_DHCP==1
+    dhcp_start(netif);
+    while (1) {
+		vTaskDelay(DHCP_FINE_TIMER_MSECS / portTICK_RATE_MS);
+		dhcp_fine_tmr();
+		mscnt += DHCP_FINE_TIMER_MSECS;
+		if (mscnt >= DHCP_COARSE_TIMER_SECS*1000) {
+			dhcp_coarse_tmr();
+			mscnt = 0;
+		}
+	}
+#else
+    xil_printf("\r\n");
+    xil_printf("%20s %6s %s\r\n", "Server", "Port", "Connect With..");
+    xil_printf("%20s %6s %s\r\n", "--------------------", "------", "--------------------");
+
+    print_echo_app_header();
+    xil_printf("\r\n");
+    sys_thread_new("echod", echo_application_thread, 0,
+		THREAD_STACKSIZE,
+		DEFAULT_THREAD_PRIO);
+    vTaskDelete(NULL);
+#endif
+#else
+    print_echo_app_header();
+    xil_printf("\r\n");
+    sys_thread_new("echod",echo_application_thread, 0,
+		THREAD_STACKSIZE,
+		DEFAULT_THREAD_PRIO);
+    vTaskDelete(NULL);
+#endif
+    return;
+}
+
+int main_thread()
+{
+#if LWIP_DHCP==1
+	int mscnt = 0;
+#endif
+
+#ifdef XPS_BOARD_ZCU102
+	IicPhyReset();
+#endif
+
+	/* initialize lwIP before calling sys_thread_new */
+    lwip_init();
+
+    /* any thread using lwIP should be created using sys_thread_new */
+    sys_thread_new("NW_THRD", network_thread, NULL,
+		THREAD_STACKSIZE,
+            DEFAULT_THREAD_PRIO);
+
+#if LWIP_IPV6==0
+#if LWIP_DHCP==1
+    while (1) {
+	vTaskDelay(DHCP_FINE_TIMER_MSECS / portTICK_RATE_MS);
+		if (server_netif.ip_addr.addr) {
+			xil_printf("DHCP request success\r\n");
+			print_ip_settings(&(server_netif.ip_addr), &(server_netif.netmask), &(server_netif.gw));
+			print_echo_app_header();
+			xil_printf("\r\n");
+			sys_thread_new("echod", echo_application_thread, 0,
+					THREAD_STACKSIZE,
+					DEFAULT_THREAD_PRIO);
+			break;
+		}
+		mscnt += DHCP_FINE_TIMER_MSECS;
+		if (mscnt >= DHCP_COARSE_TIMER_SECS * 2000) {
+			xil_printf("ERROR: DHCP request timed out\r\n");
+			xil_printf("Configuring default IP of 192.168.1.10\r\n");
+			IP4_ADDR(&(server_netif.ip_addr),  192, 168, 1, 10);
+			IP4_ADDR(&(server_netif.netmask), 255, 255, 255,  0);
+			IP4_ADDR(&(server_netif.gw),  192, 168, 1, 1);
+			print_ip_settings(&(server_netif.ip_addr), &(server_netif.netmask), &(server_netif.gw));
+			/* print all application headers */
+			xil_printf("\r\n");
+			xil_printf("%20s %6s %s\r\n", "Server", "Port", "Connect With..");
+			xil_printf("%20s %6s %s\r\n", "--------------------", "------", "--------------------");
+
+			print_echo_app_header();
+			xil_printf("\r\n");
+			sys_thread_new("echod", echo_application_thread, 0,
+					THREAD_STACKSIZE,
+					DEFAULT_THREAD_PRIO);
+			break;
+		}
+	}
+#endif
+#endif
+    vTaskDelete(NULL);
+    return 0;
 }
